@@ -2,8 +2,10 @@ import datadog.trace.agent.test.base.HttpClientTest
 import datadog.trace.instrumentation.netty41.client.NettyHttpClientDecorator
 import io.netty.channel.AbstractChannel
 import io.opentracing.tag.Tags
+import org.asynchttpclient.AsyncCompletionHandler
 import org.asynchttpclient.AsyncHttpClient
 import org.asynchttpclient.DefaultAsyncHttpClientConfig
+import org.asynchttpclient.Response
 import spock.lang.Shared
 
 import java.util.concurrent.ExecutionException
@@ -26,8 +28,13 @@ class Netty41ClientTest extends HttpClientTest<NettyHttpClientDecorator> {
     def methodName = "prepare" + method.toLowerCase().capitalize()
     def requestBuilder = asyncHttpClient."$methodName"(uri.toString())
     headers.each { requestBuilder.setHeader(it.key, it.value) }
-    def response = requestBuilder.execute().get()
-    callback?.call()
+    def response = requestBuilder.execute(new AsyncCompletionHandler() {
+      @Override
+      Object onCompleted(Response response) throws Exception {
+        callback?.call()
+        return response
+      }
+    }).get()
     return response.statusCode
   }
 
@@ -68,7 +75,7 @@ class Netty41ClientTest extends HttpClientTest<NettyHttpClientDecorator> {
     and:
     assertTraces(1) {
       trace(0, 2) {
-        basicSpan(it, 0, "parent", thrownException)
+        basicSpan(it, 0, "parent", null, thrownException)
 
         span(1) {
           operationName "netty.connect"
